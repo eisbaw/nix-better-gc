@@ -107,8 +107,23 @@ Examples:
 ### Requirements
 
 `nix` (with `nix-command` — the script enables it per-invocation), `jq`,
-`coreutils` (`numfmt`, `stat`, `date`), and `util-linux` (`findmnt`; falls back
-to `/proc/mounts`). Standard on NixOS.
+`coreutils` (`numfmt`, `stat`, `date`), `gawk`, and `findutils` (`xargs`). The
+`mount` command is used *if present* for atime detection but is not required.
+The script checks all of these at startup and refuses to run (even `--help`) if
+any are missing. When installed via the flake, every dependency is wrapped onto
+`PATH`, so nothing needs to be installed globally.
+
+### Portability (Linux and macOS)
+
+The script is POSIX-friendly and does **not** read `/proc` or use any
+Linux-specific tool. Mount options are discovered by parsing the portable
+`mount` command, which handles both Linux (`… type ext4 (ro,relatime)`) and
+macOS/BSD (`… (apfs, local, read-only, noatime)`) formats, including the macOS
+`read-only` spelling of `ro`. If `mount` is unavailable or its output can't be
+matched, atime handling falls back to the **empirical** check — it looks at the
+actual dead paths and only trusts atime if at least one shows a read *after* its
+birth — so correctness never depends on the structural probe. The flake pulls in
+`util-linux` for `mount` on Linux and relies on the system `/sbin/mount` on macOS.
 
 ## Install
 

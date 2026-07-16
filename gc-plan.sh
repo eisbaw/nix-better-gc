@@ -46,7 +46,8 @@
 set -euo pipefail
 
 # --- dependency check: runs FIRST, before --help, so a missing tool fails hard ---
-# findmnt is intentionally omitted: it is optional (there is a /proc/mounts fallback).
+# `mount` is intentionally omitted: atime detection uses it only as a hint and
+# falls back to the empirical read-after-birth check when it is absent.
 _missing=""
 for _cmd in nix nix-store jq numfmt stat date awk sort tr xargs wc mktemp; do
   command -v "$_cmd" >/dev/null 2>&1 || _missing="$_missing $_cmd"
@@ -92,25 +93,48 @@ DAY=86400
 STORE_DIR="${NIX_STORE_DIR:-/nix/store}"
 
 # ---- detect whether atime is a sensible ordering signal for this store ----
-# Structural check first (mount options), then an empirical check later once we
-# have real birth/atime pairs. Sets ATIME_CAP=on|off and ATIME_REASON.
+# Portable structural check via the `mount` command — works on Linux, macOS and
+# the BSDs; no /proc, no findmnt, nothing Linux-specific. We pick the longest
+# mountpoint that is a prefix of the store dir and inspect its options. This is
+# only a fast hint: the empirical check further down (does any path show a read
+# after birth?) is the ground truth and downgrades a frozen atime regardless.
+#   Linux `mount`:  SRC on MP type FS (opt,opt,...)
+#   macOS `mount`:  SRC on MP (fs, opt, opt, ...)   ← "read-only" not "ro"
 detect_atime_cap() {
-  local opts=""
-  opts=$(findmnt -no OPTIONS --target "$STORE_DIR" 2>/dev/null || true)
-  if [ -z "$opts" ]; then
-    # Fallback: longest matching mountpoint in /proc/mounts.
-    opts=$(awk -v p="$STORE_DIR" '
-      { mp=$2; if (index(p,mp)==1 && length(mp)>bl) { bl=length(mp); o=$4 } }
-      END { print o }' /proc/mounts 2>/dev/null || true)
+  local line mp opts="" best="" bestlen=-1 isprefix
+  if command -v mount >/dev/null 2>&1; then
+    while IFS= read -r line; do
+      case "$line" in *" on "*) ;; *) continue;; esac
+      mp=${line#* on }        # drop "SRC on "
+      mp=${mp%% type *}       # drop " type FS (...)"  (Linux)
+      mp=${mp%% \(*}          # drop " (opts...)"       (macOS / Linux)
+      [ -n "$mp" ] || continue
+      isprefix=0
+      if [ "$mp" = / ] || [ "$mp" = "$STORE_DIR" ]; then
+        isprefix=1
+      else
+        case "$STORE_DIR/" in "$mp"/*) isprefix=1;; esac
+      fi
+      [ "$isprefix" -eq 1 ] || continue
+      if [ "${#mp}" -gt "$bestlen" ]; then bestlen=${#mp}; best=$line; fi
+    done < <(mount 2>/dev/null)
+    if [ -n "$best" ]; then
+      opts=${best##*\(}; opts=${opts%%\)*}   # text inside the last (...)
+    fi
   fi
   ATIME_MNT_OPTS="${opts:-unknown}"
-  case ",$opts," in
+  local flat=",${opts// /},"                 # strip spaces (macOS "a, b") for token match
+  case "$flat" in
     *,noatime,*) ATIME_CAP=off; ATIME_REASON="mount has 'noatime' — atime disabled ($opts)"; return;;
   esac
-  case ",$opts," in
-    *,ro,*) ATIME_CAP=off; ATIME_REASON="store mounted read-only ('ro') — atime frozen ($opts)"; return;;
+  case "$flat" in
+    *,ro,*|*,read-only,*) ATIME_CAP=off; ATIME_REASON="store mounted read-only — atime frozen ($opts)"; return;;
   esac
-  ATIME_CAP=on; ATIME_REASON="mount is rw (${opts:-unknown}) — atime can advance"
+  if [ -z "$opts" ]; then
+    ATIME_CAP=on; ATIME_REASON="mount options unknown — atime verified empirically"
+  else
+    ATIME_CAP=on; ATIME_REASON="mount is rw ($opts) — atime can advance (verified empirically)"
+  fi
 }
 detect_atime_cap
 

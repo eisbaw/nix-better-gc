@@ -17,33 +17,35 @@
 stdenv.mkDerivation {
   pname = "gc-plan";
   version = "0.1.0";
-  src = ./.;
-
-  nativeBuildInputs = [ makeWrapper shellcheck ];
+  # Narrow src to just the script, so README/docs/flake edits don't rebuild it.
+  src = ./gc-plan.sh;
+  dontUnpack = true;
   dontConfigure = true;
 
+  nativeBuildInputs = [ makeWrapper shellcheck ];
+
   # Lint at build time (doubles as CI), then install a wrapped `gc-plan` with
-  # every runtime dependency on PATH. findmnt (util-linux) is included so atime
-  # detection prefers it over the /proc/mounts fallback.
+  # every runtime dependency on PATH.
   buildPhase = ''
     runHook preBuild
-    shellcheck gc-plan.sh
+    shellcheck "$src"
     runHook postBuild
   '';
 
   installPhase = ''
     runHook preInstall
-    install -Dm755 gc-plan.sh "$out/bin/gc-plan"
+    install -Dm755 "$src" "$out/bin/gc-plan"
     patchShebangs "$out/bin/gc-plan"
     wrapProgram "$out/bin/gc-plan" \
-      --prefix PATH : ${lib.makeBinPath [
+      --prefix PATH : ${lib.makeBinPath ([
         nix        # nix, nix-store
         jq
         coreutils  # numfmt, stat, date, sort, tr, wc, mktemp
         gawk
         findutils  # xargs
-        util-linux # findmnt
-      ]}
+      ] ++ lib.optionals stdenv.hostPlatform.isLinux [
+        util-linux # `mount` for atime detection; macOS uses system /sbin/mount
+      ])}
     runHook postInstall
   '';
 
