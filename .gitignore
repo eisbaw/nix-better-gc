@@ -1,3 +1,7 @@
 # Generated artifacts
 gc-plan-paths.txt
 *.log
+
+# Nix build symlinks
+result
+result-*
