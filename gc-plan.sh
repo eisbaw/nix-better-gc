@@ -45,6 +45,19 @@
 #                                          force   = delete the plan, no prompt
 set -euo pipefail
 
+# --- dependency check: runs FIRST, before --help, so a missing tool fails hard ---
+# findmnt is intentionally omitted: it is optional (there is a /proc/mounts fallback).
+_missing=""
+for _cmd in nix nix-store jq numfmt stat date awk sort tr xargs wc mktemp; do
+  command -v "$_cmd" >/dev/null 2>&1 || _missing="$_missing $_cmd"
+done
+if [ -n "$_missing" ]; then
+  printf 'gc-plan.sh: missing required command(s):%s\n' "$_missing" >&2
+  printf 'Install them, or run inside the dev shell: nix develop\n' >&2
+  exit 127
+fi
+unset _missing _cmd
+
 usage() { awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"; exit "${1:-0}"; }
 
 [ $# -ge 1 ] || usage 1
