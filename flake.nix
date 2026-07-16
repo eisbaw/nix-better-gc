@@ -9,9 +9,22 @@
       forAllSystems = f: nixpkgs.lib.genAttrs systems (s: f nixpkgs.legacyPackages.${s});
     in
     {
+      packages = forAllSystems (pkgs: rec {
+        gc-plan = pkgs.callPackage ./default.nix { };
+        default = gc-plan;
+      });
+
+      apps = forAllSystems (pkgs: rec {
+        gc-plan = {
+          type = "app";
+          program = "${self.packages.${pkgs.stdenv.hostPlatform.system}.gc-plan}/bin/gc-plan";
+        };
+        default = gc-plan;
+      });
+
       devShells = forAllSystems (pkgs: {
         default = pkgs.mkShell {
-          # Runtime deps of gc-plan.sh plus the dev tooling (shellcheck, just).
+          # Dev tooling plus the script's runtime deps, for hacking without `nix build`.
           packages = with pkgs; [
             bash
             just

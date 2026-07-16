@@ -110,6 +110,23 @@ Examples:
 `coreutils` (`numfmt`, `stat`, `date`), and `util-linux` (`findmnt`; falls back
 to `/proc/mounts`). Standard on NixOS.
 
+## Install
+
+The flake packages `gc-plan` with all runtime deps wrapped onto `PATH`, so it
+runs anywhere without a dev shell:
+
+```bash
+nix run github:eisbaw/nix-better-gc -- 10G      # run without installing
+nix profile install github:eisbaw/nix-better-gc # install `gc-plan` onto PATH
+nix build github:eisbaw/nix-better-gc           # build → ./result/bin/gc-plan
+```
+
+Non-flake (`callPackage`) consumers can use `default.nix` directly:
+
+```bash
+nix-build -E '(import <nixpkgs> {}).callPackage ./default.nix {}'
+```
+
 ## Development
 
 A flake pins the tooling (shellcheck, just, and the script's runtime deps):
@@ -120,6 +137,11 @@ just                   # list recipes
 just check             # shellcheck gc-plan.sh
 just plan 10G          # run a plan
 ```
+
+The package definition lives in `default.nix` (callPackage form); the flake
+imports it via `pkgs.callPackage ./default.nix {}` and exposes it as
+`packages.default` / `apps.default`. `shellcheck` runs at build time, so a lint
+failure fails the build.
 
 ## Caveats and limitations
 
