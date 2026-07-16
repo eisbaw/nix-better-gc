@@ -182,3 +182,7 @@ atime when provably meaningful), a size target, and a review-before-delete
 workflow. For genuine last-access LRU, the Lix `lastReferencedTime` approach or
 an external access observatory (e.g. `fanotify`/eBPF watching opens under
 `/nix/store`) is the real fix; this is the version you can run today.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
